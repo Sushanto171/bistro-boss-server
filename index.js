@@ -48,7 +48,11 @@ async function run() {
     // verifyToken
     const verifyToken = async (req, res, next) => {
       try {
-        const authHeader = req.headers["authorization"];
+        const authHeader = req?.headers["authorization"];
+        if (!authHeader)
+          return res
+            .status(403)
+            .json({ message: "Forbidden unauthorized access" });
         const [schema, token] = authHeader.split(" ");
         if (schema !== "Bearer" || !token) {
           return res
@@ -92,6 +96,56 @@ async function run() {
       }
     });
 
+    // admin middleware
+    const verifyAdmin = async (req, res, next) => {
+      try {
+        const user = req.user;
+        const query = { email: user };
+        const result = await usersCollection.findOne(query);
+        const isAdmin = result?.role === "admin";
+        if (!isAdmin)
+          return res
+            .status(403)
+            .json({ message: "Forbidden unauthorized access" });
+
+        next();
+      } catch (error) {
+        console.log(error);
+      }
+    };
+    // check user whether is admin
+    app.get("/user/admin/:email", verifyToken, async (req, res) => {
+      try {
+        const email = req.params.email;
+        const user = req.user;
+        if (email !== user) {
+          return res
+            .status(403)
+            .json({ message: "Forbidden unauthorized  access" });
+        }
+        const result = await usersCollection.findOne({ email });
+        const role = result?.role === "admin";
+
+        res.status(200).json({ success: true, data: role });
+      } catch (error) {
+        console.log(error);
+      }
+    });
+
+    // admin route
+    app.get("/users", verifyToken, verifyAdmin, async (req, res) => {
+      try {
+        result = await usersCollection.find({}).toArray();
+        res.status(200).json({
+          success: true,
+          message: "successfully fetched all users data",
+          data: result,
+        });
+      } catch (error) {
+        console.log(error);
+      }
+    });
+
     // cats related apis
     app.post("/carts", async (req, res) => {
       try {
@@ -111,9 +165,14 @@ async function run() {
 
     app.get("/carts/:email", verifyToken, async (req, res) => {
       try {
-        const user = req.user;
-        console.log(user);
         const email = req.params.email;
+        const user = req.user;
+        if (email !== user) {
+          return res.status(403).json({
+            message: "Forbidden: unauthorized access.",
+            success: false,
+          });
+        }
         const query = { email };
         const result = await cartsCollection.find(query).toArray();
         res.status(200).json({
