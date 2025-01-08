@@ -4,7 +4,7 @@ const cors = require("cors");
 const jwt = require("jsonwebtoken");
 const cookieParser = require("cookie-parser");
 
-const { MongoClient, ServerApiVersion } = require("mongodb");
+const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 const port = process.env.PROT || 5000;
 const app = express();
 
@@ -145,6 +145,52 @@ async function run() {
         console.log(error);
       }
     });
+
+    // update user role
+    app.patch(
+      "/user/update/role/:id",
+      verifyToken,
+      verifyAdmin,
+      async (req, res) => {
+        try {
+          const id = req.params.id;
+          const updatedDoc = { $set: { role: "admin" } };
+          const result = await usersCollection.updateOne(
+            { _id: new ObjectId(id) },
+            updatedDoc
+          );
+
+          res.status(200).json({
+            success: "User role updated",
+            data: result,
+          });
+        } catch (error) {
+          console.log(error);
+        }
+      }
+    );
+
+    // delete user
+    app.delete(
+      "/user/delete/:id",
+      verifyToken,
+      verifyAdmin,
+      async (req, res) => {
+        try {
+          const id = req.params.id;
+          const result = await usersCollection.deleteOne({
+            _id: new ObjectId(id),
+          });
+          res.status(200).json({
+            success: true,
+            message: "User successfully deleted",
+            data: result,
+          });
+        } catch (error) {
+          console.log(error);
+        }
+      }
+    );
 
     // cats related apis
     app.post("/carts", async (req, res) => {
