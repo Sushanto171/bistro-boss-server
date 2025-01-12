@@ -3,7 +3,7 @@ const express = require("express");
 const cors = require("cors");
 const jwt = require("jsonwebtoken");
 const cookieParser = require("cookie-parser");
-
+const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 const port = process.env.PROT || 5000;
 const app = express();
@@ -30,6 +30,23 @@ async function run() {
     const reviewsCollection = client.db("bistro-boss").collection("reviews");
     const cartsCollection = client.db("bistro-boss").collection("carts");
     const usersCollection = client.db("bistro-boss").collection("users");
+
+    // create intent
+    app.post("/create-confirm-intent", async (req, res) => {
+      try {
+        const { price } = req.body;
+        const amount = paresIn(amount * 100);
+        const intent = await stripe.PaymentIntents.create({
+          confirm: true,
+          amount: amount,
+          currency: "usd",
+          payment_method_types: ["card"],
+        });
+        res.json({ clientSecret: intent.client_secret });
+      } catch (error) {
+        res.json({ error });
+      }
+    });
 
     // generate token
     app.post("/jwt", async (req, res) => {
@@ -231,6 +248,23 @@ async function run() {
       }
     });
 
+    // remove menu form cart collection
+    app.delete("/cart/:id", async (req, res) => {
+      try {
+        const id = req.params.id;
+        const result = await cartsCollection.deleteOne({
+          _id: new ObjectId(id),
+        });
+        res.status(200).json({
+          success: true,
+          message: "Successfully menu deleted form cart",
+          data: result,
+        });
+      } catch (error) {
+        res.status(500).send({ message: "internal server error" });
+      }
+    });
+
     // menu related apis
     app.get("/menu", async (req, res) => {
       try {
@@ -258,6 +292,58 @@ async function run() {
           res.status(500).send({ message: "sever error" });
         }
       });
+    });
+
+    // menu delete by id
+    app.delete("/menu/:id", verifyToken, verifyAdmin, async (req, res) => {
+      try {
+        const result = await menuCollection.deleteOne({
+          _id: new ObjectId(req.params.id),
+        });
+        res.status(200).json({
+          success: true,
+          message: "Menu deleted success",
+          data: result,
+        });
+      } catch (error) {
+        res.status(500).send({ message: "internal server error" });
+      }
+    });
+
+    // menu data update by id
+    app.patch("/menu/:id", verifyToken, verifyAdmin, async (req, res) => {
+      try {
+        const id = req.params.id;
+        const menuData = req.body;
+        const updateDoc = { $set: { menuData } };
+
+        const result = await menuCollection.updateOne(
+          { _id: new ObjectId(id) },
+          updateDoc
+        );
+        res.status(200).json({
+          success: true,
+          message: "Menu updated",
+          data: result,
+        });
+      } catch (error) {
+        res.status(500).send({ message: " internal server error" });
+      }
+    });
+
+    // add item
+    app.post("/menu", verifyToken, verifyAdmin, async (req, res) => {
+      try {
+        const menuData = req.body;
+        const result = await menuCollection.insertOne(menuData);
+        res.status(201).json({
+          success: true,
+          message: "Successfully added item",
+          data: result,
+        });
+      } catch (error) {
+        console.log(error);
+      }
     });
     await client.connect();
     // Send a ping to confirm a successful connection
