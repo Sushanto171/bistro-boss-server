@@ -5,6 +5,7 @@ const jwt = require("jsonwebtoken");
 const cookieParser = require("cookie-parser");
 const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
+const { default: Stripe } = require("stripe");
 const port = process.env.PROT || 5000;
 const app = express();
 
@@ -30,14 +31,15 @@ async function run() {
     const reviewsCollection = client.db("bistro-boss").collection("reviews");
     const cartsCollection = client.db("bistro-boss").collection("carts");
     const usersCollection = client.db("bistro-boss").collection("users");
+    const paymentCollection = client.db("bistro-boss").collection("payments");
 
     // create intent
     app.post("/create-confirm-intent", async (req, res) => {
       try {
         const { price } = req.body;
-        const amount = paresIn(amount * 100);
-        const intent = await stripe.PaymentIntents.create({
-          confirm: true,
+        const amount = parseInt(price * 100);
+
+        const intent = await stripe.paymentIntents.create({
           amount: amount,
           currency: "usd",
           payment_method_types: ["card"],
@@ -260,6 +262,36 @@ async function run() {
           message: "Successfully menu deleted form cart",
           data: result,
         });
+      } catch (error) {
+        res.status(500).send({ message: "internal server error" });
+      }
+    });
+
+    app.post("/payment", async (req, res) => {
+      try {
+        const payment = req.body;
+        const paymentResult = await paymentCollection.insertOne(payment);
+
+        // carefully delete card collection
+        const query = {
+          _id: { $in: payment.cartsId.map((id) => new ObjectId(id)) },
+        };
+        const result = await cartsCollection.deleteMany(query);
+
+        res.status(200).json({
+          data: paymentResult,
+        });
+      } catch (error) {
+        res.status(500).send({ message: "internal server error" });
+      }
+    });
+
+    // get payment by email
+    app.get("/payment/:email", async (req, res) => {
+      try {
+        const email = req.params.email;
+        const result = await paymentCollection.find({ email }).toArray();
+        res.status(200).json({ message: "fetching success", data: result });
       } catch (error) {
         res.status(500).send({ message: "internal server error" });
       }
